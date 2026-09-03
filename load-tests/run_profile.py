@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -20,7 +21,9 @@ def request(url: str) -> tuple[float, int]:
     try:
         with urllib.request.urlopen(f"{url.rstrip('/')}/ready", timeout=10) as response:
             status = response.status
-    except Exception:
+    except urllib.error.HTTPError as error:
+        status = error.code
+    except (OSError, TimeoutError):
         status = 0
     return (time.perf_counter() - started) * 1000, status
 

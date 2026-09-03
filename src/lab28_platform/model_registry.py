@@ -15,6 +15,9 @@ moves the alias back, and the serving path notices on its next refresh.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +36,26 @@ TAG_EMBEDDING_MODEL = "lab28.embedding_model_id"
 TAG_DELTA_VERSION = "lab28.delta_version"
 TAG_COLLECTION = "lab28.qdrant_collection"
 TAG_FEATURE_SERVICE = "lab28.feature_service"
+
+
+@contextmanager
+def _portable_mlflow_output() -> Iterator[None]:
+    """Keep MLflow's optional emoji links from breaking non-UTF-8 terminals.
+
+    MLflow prints run URLs with emoji when a REST tracking store closes a run.
+    Windows PowerShell can expose a CP1252 stdout stream, where that otherwise
+    successful close raises ``UnicodeEncodeError`` before promotion happens.
+    """
+    name = "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT"
+    previous = os.environ.get(name)
+    os.environ[name] = "true"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
 
 
 class RegistryUnavailable(RuntimeError):
@@ -128,7 +151,10 @@ class ReleaseRegistry:
         """
         mlflow.set_experiment(self._settings.experiment)
         try:
-            with mlflow.start_run(run_name=f"release-{spec.prompt_version}") as run:
+            with (
+                _portable_mlflow_output(),
+                mlflow.start_run(run_name=f"release-{spec.prompt_version}") as run,
+            ):
                 mlflow.log_params(spec.as_params())
                 if spec.evaluation:
                     mlflow.log_metrics(spec.evaluation)
